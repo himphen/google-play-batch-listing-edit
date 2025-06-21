@@ -1,5 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { ListingPayload } from '../../lib/google-api';
+import fs from 'fs/promises';
+import path from 'path';
 
 const SEPARATOR = '---';
 
@@ -18,7 +20,7 @@ function parseTranslationFile(text: string): ListingPayload[] {
     try {
       const parsed = JSON.parse(jsonString);
 
-      if (!parsed.title || !parsed.shortDescription || !parsed.fullDescription) {
+      if (parsed.title === undefined || parsed.shortDescription === undefined || parsed.fullDescription === undefined) {
         throw new Error(`Missing required fields (title, shortDescription, fullDescription) in language block: ${language}`);
       }
 
@@ -40,21 +42,27 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<ListingPayload[] | { message: string }>
 ) {
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', ['POST']);
+  if (req.method !== 'GET') {
+    res.setHeader('Allow', ['GET']);
     return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
   try {
-    if (typeof req.body !== 'string' || req.body.trim() === '') {
-      return res.status(400).json({ message: 'Request body must be a non-empty string.' });
+    const filePath = path.join(process.cwd(), 'pending.txt');
+    const fileContent = await fs.readFile(filePath, 'utf-8');
+    
+    if (fileContent.trim() === '') {
+        return res.status(200).json([]);
     }
 
-    const parsedListings = parseTranslationFile(req.body);
+    const parsedListings = parseTranslationFile(fileContent);
     res.status(200).json(parsedListings);
 
   } catch (error: any) {
-    console.error('API Error parsing file:', error);
-    res.status(400).json({ message: error.message || 'An unexpected error occurred during parsing.' });
+    console.error('API Error importing file:', error);
+    if (error.code === 'ENOENT') {
+      return res.status(404).json({ message: 'pending.txt not found in the project root.' });
+    }
+    res.status(400).json({ message: error.message || 'An unexpected error occurred during import.' });
   }
 } 

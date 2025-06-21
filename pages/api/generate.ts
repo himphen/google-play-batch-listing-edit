@@ -1,5 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { ListingPayload } from '../../lib/google-api';
+import fs from 'fs/promises';
+import path from 'path';
 
 const SEPARATOR = '---';
 
@@ -32,10 +34,11 @@ export default async function handler(
     }
 
     const fileContent = formatForTranslation(listings);
+    const filePath = path.join(process.cwd(), 'pending.txt');
     
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.setHeader('Content-Disposition', 'attachment; filename="pending.txt"');
-    res.status(200).send(fileContent);
+    await fs.writeFile(filePath, fileContent, 'utf-8');
+    
+    res.status(200).json({ message: 'pending.txt has been generated successfully in the project root.' });
 
   } catch (error: any) {
     console.error('API Error generating file:', error);

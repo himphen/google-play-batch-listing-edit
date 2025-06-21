@@ -2,6 +2,7 @@ import { useState, useEffect, Fragment } from 'react';
 import React from 'react';
 import AIPromptModal from '../components/AIPromptModal';
 import LocaleCodesModal from '../components/LocaleCodesModal';
+import { GithubIcon } from '../components/icons/GithubIcon';
 
 // As per PRD 5.2
 interface ListingPayload {
@@ -19,6 +20,7 @@ const HomePage = () => {
   const [isAIPromptModalOpen, setAIPromptModalOpen] = useState(false);
   const [isLocaleCodesModalOpen, setLocaleCodesModalOpen] = useState(false);
   const [checked, setChecked] = useState<{ [key: string]: boolean }>({});
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const initializeCheckedState = (data: ListingPayload[]) => {
     const initialCheckedState = data.reduce((acc, item) => {
@@ -54,6 +56,8 @@ const HomePage = () => {
   }, []);
 
   const handleGenerateForTranslation = async () => {
+    setError(null);
+    setSuccessMessage(null);
     try {
       const res = await fetch('/api/generate', {
         method: 'POST',
@@ -63,64 +67,47 @@ const HomePage = () => {
         body: JSON.stringify(remoteData),
       });
 
+      const result = await res.json();
+
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.message || 'Failed to generate file.');
+        throw new Error(result.message || 'Failed to generate file.');
       }
 
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'pending.txt';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
+      setSuccessMessage(result.message);
 
     } catch (e: any) {
       setError(e.message);
     }
   };
 
-  const handleImportTranslations = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.txt';
-    input.onchange = async (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
+  const handleImportTranslations = async () => {
+    setError(null);
+    setSuccessMessage(null);
+    try {
+      const res = await fetch('/api/import');
 
-      const text = await file.text();
-      setError(null);
-
-      try {
-        const res = await fetch('/api/parse', {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain' },
-          body: text,
-        });
-
-        if (!res.ok) {
-          const errorData = await res.json();
-          throw new Error(errorData.message || 'Failed to parse file.');
-        }
-
-        const newDraft: ListingPayload[] = await res.json();
-        // Here, we need to merge the new draft with the existing one,
-        // as the uploaded file might only contain a subset of languages.
-        const updatedDraft = localDraft.map(original => {
-            const found = newDraft.find(n => n.language === original.language);
-            return found || original;
-        });
-
-        setLocalDraft(updatedDraft);
-
-      } catch (e: any) {
-        setError(`Import failed: ${e.message}`);
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || 'Failed to import translations.');
       }
-    };
-    input.click();
+
+      const newDraft: ListingPayload[] = await res.json();
+      if (newDraft.length === 0 && remoteData.length > 0) {
+        setSuccessMessage('Import finished. The pending.txt file was empty or not found. No changes have been made to the draft.');
+        return;
+      }
+      
+      const updatedDraft = localDraft.map(original => {
+          const found = newDraft.find(n => n.language === original.language);
+          return found || original;
+      });
+
+      setLocalDraft(updatedDraft);
+      setSuccessMessage('Translations imported successfully.');
+
+    } catch (e: any) {
+      setError(`Import failed: ${e.message}`);
+    }
   };
 
   const handleUpdateToPlayStore = async () => {
@@ -133,6 +120,7 @@ const HomePage = () => {
 
     if (confirm('Are you sure you want to update the selected listings on the Play Store? This action is permanent.')) {
       setError(null);
+      setSuccessMessage(null);
       try {
         const res = await fetch('/api/update', {
             method: 'POST',
@@ -146,6 +134,7 @@ const HomePage = () => {
         }
 
         alert('Update successful! The remote data will now be refreshed.');
+        setSuccessMessage(null);
         
         // Refresh data from server
         const fetchRes = await fetch('/api/listings');
@@ -183,7 +172,12 @@ const HomePage = () => {
     <div className="min-h-screen bg-slate-900 text-slate-200">
       <header className="bg-slate-800 border-b border-slate-700">
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
-          <h1 className="text-2xl font-bold text-teal-400">Google Play Batch Listing Edit</h1>
+          <div className="flex items-center space-x-4">
+            <h1 className="text-2xl font-bold text-teal-400">Google Play Batch Listing Edit</h1>
+            <a href="https://github.com/himphen/google-play-batch-listing-edit" target="_blank" rel="noopener noreferrer" className="text-slate-400 hover:text-teal-400 transition-colors">
+              <GithubIcon className="h-6 w-6" />
+            </a>
+          </div>
           <div className="space-x-2">
             <button
               onClick={handleShowLocaleCodes}
@@ -213,9 +207,10 @@ const HomePage = () => {
         </div>
       </header>
 
-      <main className="container mx-auto p-4 mt-4">
+      <main className="container mx-auto p-4 mt-4 pb-32">
         {loading && <p>Loading data from Google Play...</p>}
-        {error && <p className="text-red-400 bg-red-900/50 p-3 rounded-md">{error}</p>}
+        {error && <p className="text-red-400 bg-red-900/50 p-3 rounded-md mb-4">{error}</p>}
+        {successMessage && <p className="text-green-400 bg-green-900/50 p-3 rounded-md mb-4">{successMessage}</p>}
         
         {!loading && !error && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8">
@@ -288,16 +283,14 @@ const HomePage = () => {
         )}
         
         {!loading && !error && (
-            <footer className="fixed bottom-0 left-0 right-0 bg-slate-800/80 backdrop-blur-sm p-4 border-t border-slate-700">
-                <div className="container mx-auto flex justify-end">
-                    <button
-                        onClick={handleUpdateToPlayStore}
-                        disabled={!hasCheckedItems}
-                        className="px-6 py-3 bg-teal-600 text-white rounded-md hover:bg-teal-700 transition text-lg font-semibold disabled:bg-slate-600 disabled:text-slate-400 disabled:cursor-not-allowed"
-                    >
-                        Update to Play Store
-                    </button>
-                </div>
+            <footer className="fixed bottom-0 right-0 p-8">
+                <button
+                    onClick={handleUpdateToPlayStore}
+                    disabled={!hasCheckedItems}
+                    className="px-6 py-3 bg-teal-600 text-white rounded-md hover:bg-teal-700 transition text-lg font-semibold disabled:bg-slate-600 disabled:text-slate-400 disabled:cursor-not-allowed shadow-lg"
+                >
+                    Update to Play Store
+                </button>
             </footer>
         )}
       </main>
