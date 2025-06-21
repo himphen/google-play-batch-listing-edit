@@ -1,0 +1,14 @@
+---
+en-US
+{
+  "title": "Your App Title",
+  "shortDescription": "A concise summary of your app.",
+  "fullDescription": "A detailed description of your app's features."
+}
+---
+zh-TW
+{
+  "title": "你的應用程式標題",
+  "shortDescription": "你的應用程式的簡潔摘要。",
+  "fullDescription": "你的應用程式功能的詳細描述。"
+} 
